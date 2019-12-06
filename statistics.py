@@ -13,20 +13,6 @@ df = pd.read_csv("all_extracted_data.csv", parse_dates=['publish_date'])
 # df2 = pd.read_csv()
 # df3 = pd.read_csv()
 
-#if Kashmir or Pak is in the headline
-#label the headline accordindly
-def label_place (row):
-	kash = "Kashmir" in str(row['headline_text'])
-	pak = "Pak" in str(row['headline_text'])
-	if kash and pak:
-		return "KP"
-	elif kash and not pak:
-		return "K"
-	elif pak and not kash:
-		return "P"
-
-df['place'] = df.apply(lambda row: label_place(row), axis=1)
-
 #track the statistics
 '''
 
