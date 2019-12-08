@@ -1,5 +1,5 @@
-code/__pycache__/
+*__pycache__/
 code/wn_corpus/
 code/wna/
-data/india-news-headlines.csv
+*india-news-headlines.csv
 code/.DS_Store
