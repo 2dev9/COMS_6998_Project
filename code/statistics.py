@@ -1,238 +1,192 @@
 #statistics
 import pandas as pd
-import numpy as np
 import scipy.stats as stats
 import researchpy as rp
 import scikit_posthocs as sp
 
-#sentiment analysis
-#emotion
-from wna.wnaffect import WNAffect
-from wna.emotion import Emotion
-wna = WNAffect('wn_corpus/wordnet-1.6/', 'wn_corpus/wn-domains-3.2/')
-from nltk.tokenize import word_tokenize
-from nltk import pos_tag
-#from nltk.sentiment.vader import SentimentIntensityAnalyzer
-#sid = SentimentIntensityAnalyzer()
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+import statsmodels.stats.multicomp
 
+df = pd.read_csv("../data/all_annotated.csv", parse_dates=['publish_date'])
 
-cd = [(pd.Timestamp(2001,12,13), pd.Timestamp(2002,12,13)), (pd.Timestamp(2008,11,26), pd.Timestamp(2009,11,26)), (pd.Timestamp(2016,7,16),pd.Timestamp(2017,7,16))]
-df = pd.read_csv("../data/all_extracted.csv", parse_dates=['publish_date'])
+tracker  = open('../outputs/stats.csv', "w", newline="")
 
-def add_columns(date, text):
-	conflict = label_conflict(date)
-	emotion = label_emotion(text)
-	election =label_election(date)
-	year = label_year(date)
-	return [conflict, emotion, election, year]
-
-def label_conflict (date):
-	if ((date >= cd[0][0]) & (date <= cd[0][1])):
-		return "Standoff"
-	elif ((date >= cd[1][0]) & (date <= cd[1][1])):
-		return "Mumbai"
-	elif ((date >= cd[2][0]) & (date <= cd[2][1])):
-		return "Burhan"
-	else:
-		return "Non-conflict"
-
-def label_emotion(text):
-	for pair in pos_tag(word_tokenize(text)):
-		emo = wna.get_emotion(pair[0], pair[1])
-		if emo != None:
-			if emo.level >= 5:
-				if emo.get_level(5).name == "negative-fear":
-					return "fear"
-	return "non-fear"
-
-def label_election(date):
-	return (date.year == 2004) | (date.year == 2009) | (date.year == 2014)
-
-def label_year(date):
-	return date.year
-
-df[['conflict', 'emotion', 'election', 'year']] = df.apply(
-    lambda row: pd.Series(add_columns(row['publish_date'],row['headline_text'])), axis=1)
 
 #summary stats
-summary = rp.summary_cont(df['total_score'].groupby(df['conflict']))
-print(summary)
+tracker.write("Statistics\r\n")
+
 
 #HYPOTHESIS 1 Kashmir over Pakistan
-print("HYPOTHESIS 1")
+tracker.write("\nHYPOTHESIS 1: Kashmir-related headlines will have more negative sentiment scores on average than non-Kashmir-related  in any given year\r\n")
 levene = stats.levene(df['total_score'][df['is_kashmir']==True], 
-             df['total_score'][df['is_pakistan']==True])
+             df['total_score'][df['is_kashmir']==False])
+tracker.write("Variance is equal: %r, %s\n" % ((levene[1] >.05), levene))
 
-print("Variance is equal %r" % (levene[1] >.05))
-cor = stats.ttest_ind(df['total_score'][df['is_kashmir']==True], 
-	df['total_score'][df['is_pakistan']==True], equal_var=(levene[1] >.05))
-print(cor)
+rp.summary_cont(df.groupby(['year'])['total_score']).to_csv(tracker, mode="a")
+rp.summary_cont(df.groupby(['is_kashmir'])['total_score']).to_csv(tracker, mode="a")
+tracker.write("Summary by year and relation to Kashmir\n")
+rp.summary_cont(df.groupby(['is_kashmir','year'])['total_score']).to_csv(tracker, mode="a")
+model = ols('total_score ~ C(year)*C(is_kashmir)', df).fit()
+# Seeing if the overall model is significant
+tracker.write("\nSeeing if overall model is significant\n")
+tracker.write(f"Overall model F({model.df_model: .0f},{model.df_resid: .0f}) = {model.fvalue: .3f}, p = {model.f_pvalue: .4f}\n")
+tracker.write(str(model.summary()))
 
-print(rp.summary_cont(df.groupby(['is_kashmir','year'])['total_score']))
-cor = stats.kruskal(df['total_score'][(df['year'] == 2001) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2002) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2003) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2004) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2005) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2006) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2007) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2008) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2009) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2010) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2011) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2012) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2013) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2014) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2015) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2016) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2017) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2018) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2001) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2002) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2003) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2004) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2005) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2006) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2007) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2008) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2009) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2010) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2011) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2012) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2013) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2014) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2015) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2016) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2017) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2018) & (df['is_pakistan']==True)],)
-print(cor)
+tracker.write("\nTwo-way ANOVA\n")
+res = sm.stats.anova_lm(model, typ= 2)
+res.to_csv(tracker, mode="a")
+
+tracker.write("\nPost-hoc Tukey Tests\n")
+mc = statsmodels.stats.multicomp.MultiComparison(df['total_score'], df['year'])
+mc_results = mc.tukeyhsd()
+tracker.write(str(mc_results))
+
+mc = statsmodels.stats.multicomp.MultiComparison(df['total_score'], df['is_kashmir'])
+mc_results = mc.tukeyhsd()
+tracker.write(str(mc_results))
+
+df['kashyear'] = df["is_kashmir"].astype(str) + df['year'].astype(str)
+tracker.write("\nPost Hoc Student t-yTesting\n")
+sp.posthoc_ttest(df, val_col='total_score', group_col='kashyear').to_csv(tracker, mode="a")
+
+
 #HYPOTHESIS 2 Kashmir conflict to Kashmir non conflict
-print("HYPOTHESIS 2")
-print(rp.summary_cont(df.groupby(['is_kashmir','conflict'])['total_score']))
+tracker.write("\n\n\n\nHYPOTHESIS 2: Kashmir-related headlines will have more negative sentiment scores on average in conflict periods than Kashmir-related headlines in non-conflict  periods\r\n")
+
+rp.summary_cont(df.groupby(['is_kashmir','conflict'])['total_score']).to_csv(tracker, mode="a")
+
 levene = stats.levene(df['total_score'][(df['conflict'] == "Standoff") & (df['is_kashmir']==True)], 
              df['total_score'][(df['conflict'] == "Mumbai") & (df['is_kashmir']==True)],
              df['total_score'][(df['conflict'] == "Burhan") & (df['is_kashmir']==True)],
              df['total_score'][(df['conflict'] == "Non-conflict") & (df['is_kashmir']==True)])
-print(levene)
+tracker.write("\nVariance is equal: %r, %s\n" % ((levene[1] >.05), levene))
+
 
 if levene[1]>.05:
-	print("ANOVA")
 	cor = stats.f_oneway(df['total_score'][(df['conflict'] == "Standoff") & (df['is_kashmir']==True)], 
 	             df['total_score'][(df['conflict'] == "Mumbai") & (df['is_kashmir']==True)],
 	             df['total_score'][(df['conflict'] == "Burhan") & (df['is_kashmir']==True)],
 	             df['total_score'][(df['conflict'] == "Non-conflict") & (df['is_kashmir']==True)])
+	tracker.write("\nANOVA results: cor %f| p %f\n" % cor)
 else:
 	cor = stats.kruskal(df['total_score'][(df['conflict'] == "Standoff") & (df['is_kashmir']==True)], 
 	             df['total_score'][(df['conflict'] == "Mumbai") & (df['is_kashmir']==True)],
 	             df['total_score'][(df['conflict'] == "Burhan") & (df['is_kashmir']==True)],
 	             df['total_score'][(df['conflict'] == "Non-conflict") & (df['is_kashmir']==True)])
-print(cor) #st.write("Correlation: %d\npvalue: %d" % cor)
+	tracker.write("\nKruskal Wallis results: cor %f| p %f\n" % cor)
+
+tracker.write("\nConover Post Hoc Test\n")
+sp.posthoc_conover(df[df["is_kashmir"]==True], val_col='total_score', group_col='conflict').to_csv(tracker, mode="a")
 
 
 #HYPOTHESIS 3 Pakistan conflict to Pak non conflict
-print("HYPOTHESIS 3")
-print(rp.summary_cont(df.groupby(['is_pakistan','year'])['total_score']))
+tracker.write("\n\n\n\nHYPOTHESIS 3: Pakistan-related headlines will have more negative sentiment scores on average in conflict periods than Pakistan-related headlines in non-conflict  periods\r\n")
+
+rp.summary_cont(df.groupby(['is_pakistan','conflict'])['total_score']).to_csv(tracker, mode="a")
+
 levene = stats.levene(df['total_score'][(df['conflict'] == "Standoff") & (df['is_pakistan']==True)], 
              df['total_score'][(df['conflict'] == "Mumbai") & (df['is_pakistan']==True)],
              df['total_score'][(df['conflict'] == "Burhan") & (df['is_pakistan']==True)],
              df['total_score'][(df['conflict'] == "Non-conflict") & (df['is_pakistan']==True)])
-print(levene)
+tracker.write("\nVariance is equal: %r, %s\n" % ((levene[1] >.05), levene))
+
+
 if levene[1]>.05:
 	cor = stats.f_oneway(df['total_score'][(df['conflict'] == "Standoff") & (df['is_pakistan']==True)], 
-             df['total_score'][(df['conflict'] == "Mumbai") & (df['is_pakistan']==True)],
-             df['total_score'][(df['conflict'] == "Burhan") & (df['is_pakistan']==True)],
-             df['total_score'][(df['conflict'] == "Non-conflict") & (df['is_pakistan']==True)])
+	             df['total_score'][(df['conflict'] == "Mumbai") & (df['is_pakistan']==True)],
+	             df['total_score'][(df['conflict'] == "Burhan") & (df['is_pakistan']==True)],
+	             df['total_score'][(df['conflict'] == "Non-conflict") & (df['is_pakistan']==True)])
+	tracker.write("\nANOVA results: cor %f| p %f\n" % cor)
 else:
 	cor = stats.kruskal(df['total_score'][(df['conflict'] == "Standoff") & (df['is_pakistan']==True)], 
-             df['total_score'][(df['conflict'] == "Mumbai") & (df['is_pakistan']==True)],
-             df['total_score'][(df['conflict'] == "Burhan") & (df['is_pakistan']==True)],
-             df['total_score'][(df['conflict'] == "Non-conflict") & (df['is_pakistan']==True)])
-print(cor) #st.write("Correlation: %d\npvalue: %d" % cor)
-
+	             df['total_score'][(df['conflict'] == "Mumbai") & (df['is_pakistan']==True)],
+	             df['total_score'][(df['conflict'] == "Burhan") & (df['is_pakistan']==True)],
+	             df['total_score'][(df['conflict'] == "Non-conflict") & (df['is_pakistan']==True)])
+	tracker.write("\nKruskal Wallis results: cor %f| p %f\n" % cor)
+	
+tracker.write("\nConover Post Hoc Test\n")
+sp.posthoc_conover(df[df["is_pakistan"]==True], val_col='total_score', group_col='conflict').to_csv(tracker, mode="a")
 
 
 #HYPOTHESIS 4 Kashmir election to Kash non election
-print("HYPOTHESIS 4")
+tracker.write("\n\n\n\nHYPOTHESIS 4: Kashmir-related headlines in election periods will have more negative sentiment scores on average than Kashmir-related headlines during non-election periods\r\n")
 
-kedf = df['total_score'][(df['election']==True)& (df['is_kashmir']==True)]
-knedf = df['total_score'][(df['election']==False) & (df['is_kashmir']==True)]
-print("election kashmir")
-print(rp.summary_cont(kedf.groupby(['year'])))
-print("non election kashmir")
-print(rp.summary_cont(kendf.groupby(['year'])))
+rp.summary_cont(df[df['is_kashmir'] == True].groupby(['election'])['total_score']).to_csv(tracker, mode="a")
+tracker.write("Kashmir - Election Summary\n")
+kedf = df[(df['election']==True)& (df['is_kashmir']==True)]
+rp.summary_cont(kedf.groupby(['year'])['total_score']).to_csv(tracker, mode="a")
 
-levene = stats.levene(kedf, knedf)
-print(levene)
-cor = stats.ttest_ind(kedf, knedf, equal_var=(levene[1] >.05))
+tracker.write("Kashmir - Non Election Summary\n")
+knedf = df[(df['election']==False) & (df['is_kashmir']==True)]
+rp.summary_cont(knedf.groupby(['year'])['total_score']).to_csv(tracker, mode="a")
 
-print(cor)
-cor = stats.kruskal(df['total_score'][(df['year'] == 2001) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2002) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2003) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2004) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2005) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2006) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2007) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2008) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2009) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2010) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2011) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2012) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2013) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2014) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2015) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2016) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2017) & (df['is_kashmir']==True)],
-	df['total_score'][(df['year'] == 2018) & (df['is_kashmir']==True)])
-print(cor)
-#print(sp.posthoc_conover(kedf.append(knedf), val_col='total_score', group_col='election'))
+levene = stats.levene(kedf['total_score'], knedf["total_score"])
+tracker.write("\nVariance is equal: %r, %s\n" % ((levene[1] >.05), levene))
+cor = stats.ttest_ind(kedf['total_score'], knedf['total_score'], equal_var=(levene[1] >.05))
+tracker.write("\nANOVA results overal Kashmir election: cor %f| p %f\n" % cor)
+
+data = [df['total_score'][(df['year'] == y) & (df['is_kashmir']==tv)] for tv in [True, False] for y in range(2001, 2019)]
+cor = stats.kruskal(*data)
+tracker.write("\nKruskal Wallis results kashmir y-to-y: cor %f| p %f\n" % cor)
+sp.posthoc_conover(df[df["is_kashmir"]==True], val_col='total_score', group_col='year').to_csv(tracker, mode='a')
 
 #HYPOTHESIS 5 Pak election to Pak non election
-print("HYPOTHESIS 5")
-pedf = df['total_score'][(df['election']==True)& (df['is_pakistan']==True)]
-pnedf = df['total_score'][(df['election']==False) & (df['is_pakistan']==True)]
-print("non election pakistan")
-#print(rp.summary_cont(kendf.groupby(['year'])))
-print("non election pakistan")
-#print(rp.summary_cont(kendf.groupby(['year'])))
-levene = stats.levene(pedf, pnedf)
-print(levene)
-cor = stats.ttest_ind(pedf, pnedf, equal_var=(levene[1] >.05))
-print(cor)
+tracker.write("\n\n\n\nHYPOTHESIS 5: Pakistan-related headlines in election periods will have more negative sentiment scores on average than Pakistan-related headlines during non-election periods\r\n")
+rp.summary_cont(df[df['is_pakistan'] == True].groupby(['election'])['total_score']).to_csv(tracker, mode="a")
+tracker.write("\nPakistan - Election Summary\n")
+pedf = df[(df['election']==True)& (df['is_pakistan']==True)]
+rp.summary_cont(pedf.groupby(['year'])['total_score']).to_csv(tracker, mode="a")
 
-cor = stats.kruskal(df['total_score'][(df['year'] == 2001) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2002) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2003) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2004) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2005) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2006) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2007) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2008) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2009) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2010) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2011) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2012) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2013) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2014) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2015) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2016) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2017) & (df['is_pakistan']==True)],
-	df['total_score'][(df['year'] == 2018) & (df['is_pakistan']==True)])
+tracker.write("\nPakistan - Non Election Summary\n")
+pnedf = df[(df['election']==False) & (df['is_pakistan']==True)]
+rp.summary_cont(pnedf.groupby(['year'])['total_score']).to_csv(tracker, mode="a")
 
-print(cor)
+levene = stats.levene(pedf['total_score'], pnedf["total_score"])
+tracker.write("\nVariance is equal: %r, %s\n" % ((levene[1] >.05), levene))
+cor = stats.ttest_ind(pedf['total_score'], pnedf['total_score'], equal_var=(levene[1] >.05))
+tracker.write("\nANOVA results overall Pakistan election: cor %f| p %f\n" % cor)
+
+data = [df['total_score'][(df['year'] == y) & (df['is_pakistan']==tv)] for tv in [True, False] for y in range(2001, 2019)]
+cor = stats.kruskal(*data)
+tracker.write("\nKruskal Wallis results Pakistan y-to-y: cor %f| p %f\n" % cor)
+sp.posthoc_conover(df[df["is_pakistan"]==True], val_col='total_score', group_col='year').to_csv(tracker, mode='a')
+
 #HYPOTHESIS 6 Kash affect to Kash affect in conflict
-print("HYPOTHESIS 6")
+tracker.write("\n\n\n\nHYPOTHESIS 6\n")
 kec = df[df["is_kashmir"]==True]
-kcs = kec.groupby(['emotion', 'conflict'])
-print("non election kashmir")
+#kcs = kec.groupby(['emotion', 'conflict'])
 #print(rp.summary_cont(kcs))
-print(stats.chisquare(kcs.size().divide(len(df)).multiply(100)))
+crosstab = pd.crosstab(kec['conflict'], kec['emotion'])
+crosstab.to_csv(tracker, mode="a")
+
+chi2, p, dof, expected = stats.chi2_contingency(crosstab)
+tracker.write(f" Compute chi square\nChi2 value= {chi2}\np-value= {p}\nDegrees of freedom= {dof}\n")
+tracker.write("\nBonferroni-adjusted method\n")
+dummies = pd.get_dummies(kec['conflict'])
+for series in dummies:
+    crosstab = pd.crosstab(dummies[f"{series}"], kec['emotion'])
+    crosstab.to_csv(tracker, mode="a")
+    chi2, p, dof, expected = stats.chi2_contingency(crosstab)
+    tracker.write(f"Chi2 value= {chi2}\np-value= {p}\nDegrees of freedom= {dof}\n")
+#print(stats.chisquare(kcs.size().divide(len(df)).multiply(100)))
 
 #HYPOTHESIS 7 Pak affect to Pak affect in conflict
-print("HYPOTHESIS 7")
+tracker.write("\n\n\n\nHYPOTHESIS 7\n")
 pec = df[df["is_pakistan"]==True]
-pcs = pec.groupby(['emotion', 'conflict'])
-#print(rp.summary_cont(pcs))
-print(stats.chisquare(pcs.size().divide(len(df)).multiply(100)))
+
+crosstab = pd.crosstab(pec['conflict'], pec['emotion'])
+crosstab.to_csv(tracker, mode="a")
+
+chi2, p, dof, expected = stats.chi2_contingency(crosstab)
+tracker.write(f" Compute chi square\nChi2 value= {chi2}\n-value= {p}\nDegrees of freedom= {dof}\n")
+tracker.write("\nBonferroni-adjusted method\n")
+dummies = pd.get_dummies(pec['conflict'])
+for series in dummies:
+    crosstab = pd.crosstab(dummies[f"{series}"], pec['emotion'])
+    crosstab.to_csv(tracker, mode="a")
+    chi2, p, dof, expected = stats.chi2_contingency(crosstab)
+    tracker.write(f"Chi2 value= {chi2}\np-value= {p}\nDegrees of freedom= {dof}\n\n")
+#print(stats.chisquare(pcs.size().divide(len(df)).multiply(100)))
 
 
